@@ -1,0 +1,640 @@
+# This script should be edited constantly to include ONLY the code for making the final figures for the zombie manuscipt
+
+# Load required libraries
+library(ggplot2)
+library(cowplot)
+library(RColorBrewer)
+library(gridExtra)
+library(reshape2)
+library(lubridate)
+library(dplyr)
+library(plyr)
+library(tidyr)
+library(zoo)
+library(scales)
+
+# Read in allregs file, which includes ALL the data
+allregs <- read.csv("/Users/alesia/Desktop/zombieallregs_4Sept17.csv")
+allregs$timestamp <- as.POSIXlt(allregs$timestamp, format="%Y-%m-%d %H:%M:%S")
+allregs$date <- as.Date(allregs$date, format="%Y-%m-%d")
+allregs$hour <- hour(allregs$timestamp)
+allregs <- allregs[allregs$Depth == "02.5cm" & !is.na(allregs$Depth),]
+allregs <- allregs[with(allregs, order(timestamp)),]
+
+allregs$BlankColumn <- NA #dummy column for faceting 
+allregs$LDStatus <- factor(allregs$LDStatus, levels=c("L","D"))
+  
+# define time boundaries for plots
+onedryweek <- c(as.POSIXlt("2015-08-14 12:00:00"), as.POSIXlt("2015-09-30 12:00:00"))
+onewetweek <- c(as.POSIXlt("2015-10-15 12:00:00"), as.POSIXlt("2015-11-15 12:00:00"))
+wholeseason <- c(as.POSIXlt("2015-07-31 12:00:00"), as.POSIXlt("2015-12-04 12:00:00"))
+
+### Plots
+
+# Branch Position - one dry week, comparing Live and Dead branches
+branch.dry.plot <- ggplot(unique(allregs[,c("timestamp", "mean.dif", "StemID", "mean.dif.all", "mean.dif.LD", "LDStatus", "BlankColumn")]), aes(x=timestamp, y=mean.dif, group=StemID, colour=LDStatus)) +
+  facet_grid(BlankColumn~.) + ylab("Branch Position") + xlab("Time") +
+  geom_point(size=0.4, alpha=0.1) + 
+  geom_line(size=0.4, alpha=0.1) + 
+  geom_point(aes(y=mean.dif.LD, colour=LDStatus), shape=1, alpha=0.32, size=0.4) + 
+  geom_line(aes(y=mean.dif.LD, colour=LDStatus), alpha=0.6) + 
+  guides(colour = guide_legend(title="Branch\nType", 
+                               override.aes = list(size = 1.5))) +
+  scale_color_manual(labels = c("Live", "Dead"), values=c("#4daf4a", "#a65628")) +
+  theme(axis.title.x=element_blank(), 
+        axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+        strip.background = element_blank(), strip.text = element_text(colour="white"),
+        legend.key.size = unit(0.65,"lines")) +
+  xlim(onedryweek)  
+
+# Branch Position - one wet week, comparing Live and Dead branches
+branch.wet.plot <- ggplot(unique(allregs[,c("timestamp", "mean.dif", "StemID", "mean.dif.all", "mean.dif.LD", "LDStatus", "BlankColumn")]), aes(x=timestamp, y=mean.dif, group=StemID, colour=LDStatus)) +
+  facet_grid(BlankColumn~.) + ylab("Branch Position") + xlab("Time") +
+  geom_point(size=0.4, alpha=0.1) + 
+  geom_line(size=0.4, alpha=0.1) + 
+  geom_point(aes(y=mean.dif.LD, group=LDStatus), shape=1, alpha=0.32, size=0.4) + 
+  geom_line(aes(y=mean.dif.LD, group=LDStatus), alpha=0.6) + 
+  guides(colour = guide_legend(title="Branch\nType", 
+                               override.aes = list(size = 1.5))) +
+  scale_color_manual(labels = c("Live", "Dead"), values=c("#4daf4a", "#a65628")) +
+  theme(axis.title.x=element_blank(), 
+        axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+        strip.background = element_blank(), strip.text = element_text(colour="white"),
+        legend.key.size = unit(0.65,"lines")) +
+  xlim(onewetweek)  
+
+# Branch Position - all season plot, comparing Live and Dead branches
+stems.plot <- ggplot(unique(allregs[,c("timestamp", "LDStatus", "StemID", "mean.dif", "mean.dif.all", "mean.dif.LD", "BlankColumn")]), aes(x=timestamp, y=mean.dif, group=StemID, colour=LDStatus)) +
+  facet_grid(BlankColumn~.) + ylab("Branch Position") + xlab("Time") +
+  geom_point(size=0.4, alpha=0.1) + 
+  geom_line(size=0.4, alpha=0.1) + 
+  geom_point(aes(y=mean.dif.LD, group=LDStatus), shape=1, alpha=0.32, size=0.4) + 
+  geom_line(aes(y=mean.dif.LD, group=LDStatus), alpha=0.6) + 
+  guides(colour = guide_legend(title="Branch\nType", 
+                               override.aes = list(size = 1.5))) +
+  scale_color_manual(labels = c("Live", "Dead"), values=c("#4daf4a", "#a65628")) +
+  theme(axis.title.x=element_blank(), 
+        axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+        strip.background = element_blank(), strip.text = element_text(colour="white"),
+        legend.key.size = unit(0.65,"lines")) +
+  xlim(wholeseason) 
+
+# Function to create plots of abiotic variables
+plot.timeline.func <- function(abio.var, y.label, dot.colour, timeperiod) {
+  ggplot(data = unique(allregs[,c("timestamp", "BlankColumn", abio.var)]),
+         aes_string(x = "timestamp", y = abio.var)) +
+    facet_grid(BlankColumn~.) +
+    geom_point(aes(colour=timestamp), alpha=0) +
+    geom_line(colour=dot.colour, alpha=0.4, size=0.3) + 
+    geom_point(colour=dot.colour, fill = "white", shape = 1, alpha=0.5, size=0.7) + 
+    theme(axis.title.x=element_blank(), 
+          axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+          strip.background = element_blank(), 
+          strip.text = element_text(colour="white"),
+          legend.key.size = unit(0, "lines"),
+          legend.text = element_text(size=unit(0, "lines")),
+          legend.title = element_text(size=unit(0, "lines"))) +
+    xlab("Time") + xlim(timeperiod) +
+    ylab(y.label)
+}
+
+# Humidity # formerly colour "dark blue"
+humidity.plot <- plot.timeline.func(
+  abio.var = "RH", y.label = "Relative\nHumidity (%)", 
+  dot.colour = "black", timeperiod = wholeseason)
+humidity.plot.dry <- plot.timeline.func(
+  abio.var = "RH", y.label = "Relative\nHumidity (%)", 
+  dot.colour = "black", timeperiod = onedryweek)
+humidity.plot.wet <- plot.timeline.func(
+  abio.var = "RH", y.label = "Relative\nHumidity (%)", 
+  dot.colour = "black", timeperiod = onewetweek)
+# Air temp # formerly colour "dark red"
+AirT.plot <- plot.timeline.func(
+  abio.var = "air.temp", y.label = expression("Air\nTemperature " ( degree*C)),
+  dot.colour = "black", timeperiod = wholeseason)
+AirT.plot.dry <- plot.timeline.func(
+  abio.var = "air.temp", y.label = expression("Air\nTemperature " ( degree*C)),
+  dot.colour = "black", timeperiod = onedryweek)
+AirT.plot.wet <- plot.timeline.func(
+  abio.var = "air.temp", y.label = expression("Air\nTemperature " ( degree*C)),
+  dot.colour = "black", timeperiod = onewetweek)
+# VPD # formerly colour purple4
+VPD.plot <- plot.timeline.func(
+  abio.var = "VPD", y.label = "Vapour Pressure\nDeficit (kPa)",
+  dot.colour = "black", timeperiod = wholeseason)
+VPD.plot.dry <- plot.timeline.func(
+  abio.var = "VPD", y.label = "Vapour Pressure\nDeficit (kPa)",
+  dot.colour = "black", timeperiod = onedryweek)
+VPD.plot.wet <- plot.timeline.func(
+  abio.var = "VPD", y.label = "Vapour Pressure\nDeficit (kPa)",
+  dot.colour = "black", timeperiod = onewetweek)
+# Stem Water Potential # formerly colour "dark green"
+StemWP.plot <- plot.timeline.func(
+  abio.var = "StemWPsm", y.label = "Stem Water\nPotential (MPa)", 
+  dot.colour = "black", timeperiod = wholeseason)
+StemWP.plot.dry <- plot.timeline.func(
+  abio.var = "StemWPsm", y.label = "Stem Water\nPotential (MPa)", 
+  dot.colour = "black", timeperiod = onedryweek)
+StemWP.plot.wet <- plot.timeline.func(
+  abio.var = "StemWPsm", y.label = "Stem Water\nPotential (MPa)", 
+  dot.colour = "black", timeperiod = onewetweek)
+# PAR # formerly colour "orange"
+PAR.plot <- plot.timeline.func(
+  abio.var = "PAR", y.label = "Incoming Light\n(µE m-2 s-1)", 
+  dot.colour = "black", timeperiod = wholeseason)
+PAR.plot.dry <- plot.timeline.func(
+  abio.var = "PAR", y.label = "Incoming Light\n(µE m-2 s-1)", 
+  dot.colour = "black", timeperiod = onedryweek)
+PAR.plot.wet <- plot.timeline.func(
+  abio.var = "PAR", y.label = "Incoming Light\n(µE m-2 s-1)", 
+  dot.colour = "black", timeperiod = onewetweek)
+# Air pressure # formerly colour coral 4
+airP.plot <- plot.timeline.func(
+  abio.var = "air.press", y.label = "Air Pressure\n(kPa)", 
+  dot.colour = "black", timeperiod = wholeseason)
+
+# Difference in soil T
+SoilT.plot <- ggplot(data = unique(allregs[,c("timestamp", "BlankColumn", "SoilT.dif")]), aes(x = timestamp, y = SoilT.dif, colour=SoilT.dif)) +
+  facet_grid(BlankColumn~.) +
+  geom_line(alpha=1, size=0.3) + 
+  geom_point(alpha=1, size=0.8, shape=1) + 
+  stat_smooth(method="lm", se=F, colour="black", size=0.7) +
+  scale_colour_gradientn(colours=c('#542788', '#998ec3', '#d8daeb', '#f7f7f7', '#fdb863', '#e66101'), values=rescale(c(-11,-3,-0.5,0,1,7))) +
+  theme(axis.title.x=element_blank(), 
+        axis.text.x=element_blank(), axis.ticks.x=element_blank(), 
+        strip.background = element_blank(), 
+        strip.text = element_text(colour="white"),
+        legend.key.size = unit(0, "lines"),
+        legend.text = element_text(size=unit(0, "lines")),
+        legend.title = element_text(size=unit(0, "lines"))) +
+  xlab("Time") + xlim(wholeseason) +
+  ylab(expression("Soil\nShading" ( degree*C)))
+
+### Cross-correlations
+
+# Conceptual diagram
+signal <- seq(-1, 1, length.out=51)[-51]
+cc.concept <- rbind(
+  data.frame(TimePeriod = "Time Period 1",
+    Time = 1:300,
+    Signal = sin(pi*rep(signal, length.out=300)),
+    SignalLag = lag(sin(pi*rep(signal, length.out=300)), 5),
+    SignalLead = lead(sin(pi*rep(signal, length.out=300)), 5)), 
+  data.frame(TimePeriod = "Time Period 2",
+    Time = 1:300,
+    Signal = sin(pi*rep(signal, length.out=300)),
+    SignalLag = lead(sin(pi*rep(seq(-1, 1, length.out=56)[-56], length.out=320)), 10)[1:300],
+    SignalLead = lead(sin(pi*rep(signal, length.out=300)), 5)))
+
+# calculate cross-correlation values
+ccr.conceptone <- rbind(
+  cbind(TimePeriod = "Time Period 1", cbind(Predictor = "SignalLead", melt(cbind(cc.concept$Time[cc.concept$TimePeriod=="Time Period 1"], data.frame(rollapply(cc.concept[cc.concept$TimePeriod=="Time Period 1",], width=112, function(x) ccf(as.numeric(x[,"Signal"]), as.numeric(x[,"SignalLead"]), lag.max=4, type="correlation", na.action = na.pass, plot=F)$acf[,,1], by.column=F, partial=T))), id.vars=1))),
+  cbind(TimePeriod = "Time Period 1", cbind(Predictor = "SignalLag", melt(cbind(cc.concept$Time[cc.concept$TimePeriod=="Time Period 1"], data.frame(rollapply(cc.concept[cc.concept$TimePeriod=="Time Period 1",], width=112, function(x) ccf(as.numeric(x[,"Signal"]), as.numeric(x[,"SignalLag"]), lag.max=4, type="correlation", na.action = na.pass, plot=F)$acf[,,1], by.column=F, partial=T))), id.vars=1))))
+colnames(ccr.conceptone) <- c("TimePeriod", "Predictor", "Time", "lag", "acf")
+
+ccr.concepttwo <- rbind(
+  cbind(TimePeriod = "Time Period 2", cbind(Predictor = "SignalLead", melt(cbind(cc.concept$Time[cc.concept$TimePeriod=="Time Period 2"], data.frame(rollapply(cc.concept[cc.concept$TimePeriod=="Time Period 2",], width=112, function(x) ccf(as.numeric(x[,"Signal"]), as.numeric(x[,"SignalLead"]), lag.max=4, type="correlation", na.action = na.pass, plot=F)$acf[,,1], by.column=F, partial=T))), id.vars=1))),
+  cbind(TimePeriod = "Time Period 2", cbind(Predictor = "SignalLag", melt(cbind(cc.concept$Time[cc.concept$TimePeriod=="Time Period 2"], data.frame(rollapply(cc.concept[cc.concept$TimePeriod=="Time Period 2",], width=112, function(x) ccf(as.numeric(x[,"Signal"]), as.numeric(x[,"SignalLag"]), lag.max=4, type="correlation", na.action = na.pass, plot=F)$acf[,,1], by.column=F, partial=T))), id.vars=1))))
+colnames(ccr.concepttwo) <- c("TimePeriod", "Predictor", "Time", "lag", "acf")
+ccr.concept <- rbind(ccr.conceptone, ccr.concepttwo)
+
+# aggregate by day
+ccr.concept$lag <- as.numeric(as.factor(ccr.concept$lag)) - 5
+ccr.concept <- ddply(ccr.concept, c("TimePeriod", "Predictor", "Time"), function(x) data.frame(max.acf = max(x$acf, na.rm=T),
+             lag.max.acf = x$lag[x$acf == max(x$acf, na.rm=T)]))
+ccr.concept$Predictor <- revalue(ccr.concept$Predictor, c(
+  "SignalLead" = "dot",
+  "SignalLag" = "dash"))
+
+# Plot - theoretical predictor and response variables
+cc.concept$BlankColumn <- NA
+concept.fig <- ggplot(cc.concept, aes(Time, Signal)) + 
+  xlim(40,230) + facet_grid(BlankColumn~TimePeriod) +
+  geom_point(aes(x=240, y=Signal, colour=Time)) + #useless, just need legend
+  geom_line(size=0.7, colour="black") + 
+  geom_line(aes(y=SignalLag), colour="#d7191c", size=0.7, linetype="longdash") +
+  geom_line(aes(y=SignalLead), colour="#2c7bb6", size=0.7, linetype="dotted") + 
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+        strip.background = element_blank(), strip.text = element_text(size=13),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))
+# Plot - Cross-correlation values
+ccr.concept.heatmap <- ggplot(ccr.concept, aes(x=Time, y=0.5, fill=lag.max.acf)) + 
+  geom_raster(interpolate=T) + 
+  geom_line(aes(x=Time, y=max.acf), show.legend = F) + 
+  facet_grid(Predictor~TimePeriod) + xlim(40, 230) +
+  scale_fill_gradientn(
+    colours=c("#d7191c", "#fdae61", "#ffffbf", "#abd9e9", "#2c7bb6"), 
+    labels = c("- (lead)"," ","0"," ","+ (lag)")) + 
+  scale_y_continuous(breaks=c(0,1), position = "left") +
+  ylab("Correlation") + xlab("Time") +
+  guides(fill = guide_legend(title="Lag")) + theme_light() +
+  theme(panel.spacing.y = unit(0.3, "line"), 
+        axis.title.y = element_text(size=10),
+        axis.text.y = element_text(size=8),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        strip.background = element_rect(fill = "#d9d9d9"), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(size=10, colour = "#252525"), 
+        strip.text.x = element_blank(),
+        legend.key.size = unit(0.65,"lines"),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))
+# Print concept figures
+both.concept.plots <- ggdraw() +
+  draw_plot(plot_grid(concept.fig, ccr.concept.heatmap, align="v", ncol=1,
+                      rel_heights = c(0.65, 0.35))) +
+  geom_rect(aes(xmin = 0.73, xmax = 1, ymin = 0.4, ymax = 1),
+            colour = "white", fill = "white") 
+save_plot("/Users/alesia/Desktop/ZombieCCFconcept.png", both.concept.plots, base_width = 6, base_height = 3)
+
+
+# Find the cross-correlation between live and dead branches
+allregs$mean.dif.LD <- round(allregs$mean.dif.LD, digits = 6)
+cc.LD <- unique(allregs[,c("timestamp", "date", "hour", "mean.dif.LD", "LDStatus")])
+unique(cc.LD[c(4226:4229),c("timestamp", "date", "hour", "mean.dif.LD", "LDStatus")])
+unique(cc.LD[rownames(cc.LD) %in% 298302:298308,c("timestamp", "date", "hour", "mean.dif.LD", "LDStatus")])
+cc.LD <- cc.LD[-(4226:4229),] # weird lines causing errors?
+cc.LD <- spread(cc.LD, LDStatus, mean.dif.LD)
+
+ccLD.daily <- cbind("LD", melt(cbind(cc.LD$timestamp, data.frame(rollapply(cc.LD, width=24*5, function(x) ccf(as.numeric(x[,"L"]), as.numeric(x[,"D"]), lag.max=3, type="correlation", na.action = na.pass, plot=F)$acf[,,1], by.column=F, partial=T))), id.vars="cc.LD$timestamp"))
+colnames(ccLD.daily) <- c("data.comp", "timestamp", "lag", "acf")
+
+# aggregate by day
+ccLD.daily$date <- as.Date(trunc(as.POSIXct(ccLD.daily$timestamp), units="days"))
+ccLD.daily$hour <- hour(as.POSIXct(ccLD.daily$timestamp))
+ccLD.daily$lag <- as.numeric(as.factor(ccLD.daily$lag)) - 4
+
+ccLD.daily <- ddply(ccLD.daily[,c("date", "hour", "data.comp", "lag", "acf")], c("date", "hour", "data.comp"), function(x)
+  data.frame(max.hourly.acf = max(x$acf, na.rm=T),
+             lag.max.acf = x$lag[x$acf == max(x$acf, na.rm=T)]))
+ccLD.daily <- ddply(ccLD.daily[,c("date", "data.comp", "max.hourly.acf", "lag.max.acf")], c("date", "data.comp"), function(x)
+  data.frame(daily.meanmax.acf = mean(x$max.hourly.acf, na.rm=T),
+             daily.mean.lag = round(mean(x$lag.max.acf, na.rm=T))))
+
+ccLD.daily$BlankColumn <- "L vs. D"
+ccLD.daily$daily.mean.lag <- as.factor(ccLD.daily$daily.mean.lag)
+ccLD.daily$daily.mean.lag <- factor(ccLD.daily$daily.mean.lag,
+                                     levels=-3:3)
+ccLD.heatmap <- ggplot(ccLD.daily, aes(x=date, y=0.5)) + 
+  geom_raster(interpolate=F, aes(fill=daily.mean.lag)) + 
+  scale_fill_manual(drop=F,
+    values=c('#d73027','#fc8d59','#fee090','#ffffbf','#e0f3f8','#91bfdb','#4575b4')) +
+  geom_line(aes(y=daily.meanmax.acf)) +
+  geom_hline(yintercept=0.5, alpha=0.3, linetype=2) + 
+  scale_y_continuous(breaks=c(0,0.5,1), position = "left") +
+  ylab("Correlation") + xlab("Time") +
+  guides(fill = guide_legend(title="Lag")) + theme_light() +
+  facet_grid(BlankColumn~.) + 
+  theme(panel.spacing.y = unit(0.3, "line"), 
+        axis.title.y = element_text(size=12), axis.text.y = element_text(size=8),
+        axis.text.x = element_text(size=12), 
+        strip.background = element_rect(fill = "#d9d9d9"), 
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        strip.text = element_text(size=10, colour = "#252525"), 
+        strip.text.x = element_blank(),
+        legend.key.size = unit(0.65,"lines"),
+        plot.margin = unit(c(0, 0, 0, 0), "cm"))
+
+both.BranchPosition.plots <- ggdraw() +
+  draw_plot(plot_grid(stems.plot, ccLD.heatmap, align="v", ncol=1,
+                      rel_heights = c(0.7, 0.3))) 
+save_plot("/Users/alesia/Desktop/ZombieBranchPlots.png", both.BranchPosition.plots, base_width = 7, base_height = 3)
+
+
+
+
+# Function to calculate cross-correlations with abiotic factors
+cc.func <- function(abio.var, LagMax, Width) {
+  # Make subset of Live or Dead branch data
+  for (LD in c("L", "D")) {
+    LD.data <- unique(allregs[allregs$LDStatus==LD, c("timestamp", "mean.dif.LD", "LDStatus", "PAR", "RH", "air.temp", "VPD", "StemWPsm", "FC", "GPP", "RE", "LE", "SoilT.dif")])
+    # Order data by timestamp
+    LD.data <- LD.data[with(LD.data, order(timestamp)),]
+    # Create data.frame with ccf
+    for (var in 1:length(unique(abio.var))) {
+      ccr.output <- cbind(unique(abio.var)[var], unique(LD.data$LDStatus), LD.data[,unique(abio.var)[var]], melt(cbind(LD.data$timestamp, data.frame(rollapply(LD.data, width=Width, function(x) ccf(as.numeric(x[,"mean.dif.LD"]), as.numeric(x[,unique(abio.var)[var]]), lag.max=LagMax, type="correlation", na.action = na.pass, plot=F)$acf[,,1], by.column=F, partial=T))), id.vars="LD.data$timestamp"))
+      colnames(ccr.output) <- c("data.comp", "LDStatus", "raw.values", "timestamp", "lag", "acf")
+      if (var == 1 & LD == "L") { all.ccr.output <- ccr.output }
+      if (var > 1 | LD == "D") { all.ccr.output <- rbind(all.ccr.output, ccr.output) 
+      }}}
+    all.ccr.output$lag <- as.numeric(as.factor(all.ccr.output$lag)) - (LagMax + 1)
+    all.ccr.output$date <- as.Date(trunc(as.POSIXct(all.ccr.output$timestamp), units="days"))
+    all.ccr.output$hour <- hour(as.POSIXct(all.ccr.output$timestamp))
+    return(all.ccr.output)
+    }
+
+cc.daily <- cc.func(abio.var = c("PAR", "VPD", "RH", "air.temp", "StemWPsm"), Width = 24*5, LagMax = 3)
+# Add on soil calcs, allow for a little more lag
+cc.SOIL <- cc.func(abio.var = c("SoilT.dif"), Width = 24*5, LagMax = 4)
+cc.daily <- rbind(cc.daily, cc.SOIL)
+
+cc.hourly.max <- ddply(
+  cc.daily[,c("date", "hour", "data.comp", "raw.values", "LDStatus", "lag", "acf")], 
+  c("date", "hour", "data.comp", "LDStatus"), function(x)
+  data.frame(raw.values = mean(unique(x$raw.values), na.rm=T), 
+             max.hourly.acf = max(abs(x$acf), na.rm=T),
+             lag.max.acf = x$lag[abs(x$acf) == max(abs(x$acf), na.rm=T)]))
+cc.daily.max <- ddply(cc.hourly.max, 
+  c("date", "data.comp", "LDStatus"), function(x)
+  data.frame(daily.meanmax.acf = mean(x$max.hourly.acf, na.rm=T),
+             daily.mean.lag = mean(x$lag.max.acf, na.rm=T),
+             daily.mean.rawvalue = mean(x$raw.values, na.rm=T)))
+
+# Function to create heatmap plots, splitting Live and Dead correlations
+heatmap.plot.function <- function(abio.var, timeperiod, plot.order="not.last") {
+  data.to.plot <- cc.daily.max[cc.daily.max$data.comp == abio.var,]
+  if (abio.var %in% c("PAR", "VPD", "RH", "air.temp", "StemWPsm")) {
+    data.for.legend <- cc.daily.max[cc.daily.max$data.comp %in% c("PAR", "VPD", "RH", "air.temp", "StemWPsm"),] }
+  if (abio.var %in% c("SoilT.dif")) {
+    data.for.legend <- cc.daily.max[cc.daily.max$data.comp == abio.var,] }
+  plot <- ggplot(data.to.plot[!is.na(data.to.plot$LDStatus),], aes(x=date, y=0.5, fill=daily.mean.lag)) +
+    geom_raster(data=data.for.legend, alpha=0) + # fake, for legend
+    geom_raster(interpolate=T) + 
+    scale_fill_gradientn(colours=c('#d73027','#fc8d59','#fee090','#ffffbf','#e0f3f8','#91bfdb','#4575b4')) +
+    geom_hline(yintercept=0.5, alpha=0.3, linetype=2) + 
+    geom_line(aes(y=abs(daily.meanmax.acf), alpha=abs(daily.meanmax.acf)), show.legend = F) + scale_alpha(range=c(0,1)) +
+    facet_grid(LDStatus~., drop=T) +
+    scale_y_continuous(breaks=c(0,1), position = "left") + 
+    ylab(expression(R^2)) + 
+    xlab("Time") + xlim(as.Date(timeperiod)) +
+    guides(fill = guide_legend(title="Lag")) +
+    theme_light() + 
+    theme(panel.spacing.y = unit(0.3, "line"), 
+          axis.title.y = element_text(size=12), axis.text.y = element_text(size=8),
+          strip.background = element_rect(fill = "#d9d9d9"), 
+          panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+          strip.text = element_text(size=10, colour = "#252525"), 
+          strip.text.x = element_blank(),
+          legend.key.size = unit(0.65,"lines"),
+          plot.margin = unit(c(0, 0, 0, 0), "cm"))
+  if(plot.order == "last") {
+    plot <- plot + theme(axis.text.x = element_text(size=12))
+  } else {
+    plot <- plot + theme(axis.text.x = element_blank(),
+                         axis.ticks.x = element_blank(),
+                         axis.title.x = element_blank())
+  }
+  plot
+}
+
+# Cross-correlation - humidity
+humidity.cc.plot <- heatmap.plot.function(abio.var = "RH", timeperiod = wholeseason)
+humidity.cc.plot.wet <- heatmap.plot.function(abio.var = "RH", timeperiod = onewetweek)
+humidity.cc.plot.dry <- heatmap.plot.function(abio.var = "RH", timeperiod = onedryweek)
+
+# Cross-correlation - air temperature
+AirT.cc.plot <- heatmap.plot.function(abio.var = "air.temp", timeperiod = wholeseason)
+AirT.cc.plot.wet <- heatmap.plot.function(abio.var = "air.temp", timeperiod = onewetweek)
+AirT.cc.plot.dry <- heatmap.plot.function(abio.var = "air.temp", timeperiod = onedryweek)
+
+# Cross-correlation - VPD
+VPD.cc.plot <- heatmap.plot.function(abio.var = "VPD", timeperiod = wholeseason)
+VPD.cc.plot.wet <- heatmap.plot.function(abio.var = "VPD", timeperiod = onewetweek)
+VPD.cc.plot.dry <- heatmap.plot.function(abio.var = "VPD", timeperiod = onedryweek)
+
+# Cross-correlation - PAR
+PAR.cc.plot <- heatmap.plot.function(abio.var = "PAR", timeperiod = wholeseason)
+PAR.cc.plot.wet <- heatmap.plot.function(abio.var = "PAR", timeperiod = onewetweek)
+PAR.cc.plot.dry <- heatmap.plot.function(abio.var = "PAR", timeperiod = onedryweek)
+
+# Cross-correlation - stem water potential
+StemWP.cc.plot <- heatmap.plot.function(abio.var = "StemWPsm", timeperiod = wholeseason, plot.order = "last")
+StemWP.cc.plot.wet <- heatmap.plot.function(abio.var = "StemWPsm", timeperiod = onewetweek, plot.order = "last")
+StemWP.cc.plot.dry <- heatmap.plot.function(abio.var = "StemWPsm", timeperiod = onedryweek, plot.order = "last")
+
+
+# Cross-correlation - difference in Soil Temperature
+SoilT.cc.plot <- heatmap.plot.function(abio.var = "SoilT.dif", timeperiod = wholeseason, plot.order = "last")
+SoilT.cc.plot.wet <- heatmap.plot.function(abio.var = "SoilT.dif", timeperiod = onewetweek, plot.order = "last")
+SoilT.cc.plot.dry <- heatmap.plot.function(abio.var = "SoilT.dif", timeperiod = onedryweek, plot.order = "last")
+
+
+# Print a big panel of all seasonal plots
+all.seasonal.plots <- ggdraw() +
+  draw_plot(plot_grid(humidity.plot, humidity.cc.plot, 
+                      AirT.plot, AirT.cc.plot,
+                      VPD.plot, VPD.cc.plot,
+                      StemWP.plot, StemWP.cc.plot,
+                      align="v", ncol=1,
+                      rel_heights = c(7,3,7,3,7,3,7,4)))
+save_plot("/Users/alesia/Desktop/ZombieAbioSeasonPlots.png", all.seasonal.plots, base_width = 6.5, base_height = 9)
+
+# Print soil shading plots
+all.seasonal.plots <- ggdraw() +
+  draw_plot(plot_grid(SoilT.plot, SoilT.cc.plot, 
+                      align="v", ncol=1,
+                      rel_heights = c(7,3.5)))
+save_plot("/Users/alesia/Desktop/ZombieSoilShadePlots.png", all.seasonal.plots, base_width = 6.5, base_height = 3)
+
+
+
+
+
+
+
+
+
+
+
+### Correlation plots
+# Correlation tests
+raw.corr <- data.frame(
+  RHest = cor.test(allregs$RH, allregs$mean.dif.all)$estimate,
+  AirTest = cor.test(allregs$air.temp, allregs$mean.dif.all)$estimate,
+  PARest = cor.test(allregs$PAR, allregs$mean.dif.all)$estimate,
+  StemWPest = cor.test(allregs$StemWPsm, allregs$mean.dif.all)$estimate,
+  VPDest = cor.test(allregs$VPD, allregs$mean.dif.all)$estimate,
+  RHpval = cor.test(allregs$RH, allregs$mean.dif.all)$p.value,
+  AirTpval = cor.test(allregs$air.temp, allregs$mean.dif.all)$p.value,
+  PARpval = cor.test(allregs$PAR, allregs$mean.dif.all)$p.value,
+  StemWPpval = cor.test(allregs$StemWPsm, allregs$mean.dif.all)$p.value,
+  VPDpval = cor.test(allregs$VPD, allregs$mean.dif.all)$p.value)
+
+raw.corr$RHest <- paste("R^2 == ", round(raw.corr$RHest, digits=2))
+raw.corr$AirTest <- paste("R^2 == ", round(raw.corr$AirTest, digits=2))
+raw.corr$PARest <- paste("R^2 == ", round(raw.corr$PARest, digits=2))
+raw.corr$StemWPest <- paste("R^2 == ", round(raw.corr$StemWPest, digits=2))
+raw.corr$VPDest <- paste("R^2 == ", round(raw.corr$VPDest, digits=2))
+raw.corr$ypos <- .9*max(allregs$mean.dif.all, na.rm=T)
+
+
+
+c(cor.test(allregs$StemWPsm[month(allregs$timestamp)<=9], allregs$mean.dif.all[month(allregs$timestamp)<=9])$estimate, cor.test(allregs$StemWPsm[month(allregs$timestamp)<=9], allregs$mean.dif.all[month(allregs$timestamp)<=9])$p.value)
+
+c(cor.test(allregs$StemWPsm[allregs$LDStatus=="D" & month(allregs$timestamp)<=9], allregs$mean.dif.LD[allregs$LDStatus=="D" & month(allregs$timestamp)<=9])$estimate, cor.test(allregs$StemWPsm[allregs$LDStatus=="D" & month(allregs$timestamp)<=9], allregs$mean.dif.LD[allregs$LDStatus=="D" & month(allregs$timestamp)<=9])$p.value)
+
+
+
+WigRH.cor.plot <- ggplot(unique(allregs[,c("timestamp", "RH", "mean.dif.all")]), aes(x=RH, y=mean.dif.all)) + theme_bw(base_size=20) + 
+  theme(legend.position="none",
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  geom_point(aes(alpha=0.3), colour="dark blue") + stat_smooth(method="lm") + 
+  geom_text(data=raw.corr, aes(x=25, y=ypos, label=RHest), size=7, vjust=1, parse=T, show.legend=F) +
+  ylab("Branch Position")
+
+WigAirT.cor.plot <- ggplot(unique(allregs[,c("timestamp", "air.temp", "mean.dif.all")]), aes(x=air.temp, y=mean.dif.all)) + theme_bw(base_size=20) + 
+  theme(legend.position="none",
+        axis.title.x=element_blank(), axis.title.y=element_blank(),
+        axis.text.x=element_blank(), axis.text.y=element_blank(),
+        axis.ticks.x=element_blank(), axis.ticks.y=element_blank()) +
+  geom_point(aes(alpha=0.3), colour="dark red") + stat_smooth(method="lm") + 
+  geom_text(data=raw.corr, aes(x=25, y=0.6, label=AirTest), size=7, vjust=1, parse=T, show.legend=F) + 
+  ylab("Branch Position")
+
+WigVPD.cor.plot <- ggplot(unique(allregs[,c("timestamp", "VPD", "mean.dif.all")]), aes(x=VPD, y=mean.dif.all)) + theme_bw(base_size=20) + 
+  theme(legend.position="none",
+        axis.title.x=element_blank(), axis.title.y=element_blank(),
+        axis.text.x=element_blank(), axis.text.y=element_blank(),
+        axis.ticks.x=element_blank(), axis.ticks.y=element_blank()) +
+  geom_point(aes(alpha=0.3), colour="purple") + stat_smooth(method="lm") + 
+  geom_text(data=raw.corr, aes(x=4, y=ypos, label=VPDest), size=7, vjust=1, parse=T, show.legend=F) + 
+  ylab("Branch Position")
+
+WigStemWP.cor.plot <- ggplot(unique(allregs[,c("timestamp", "StemWPsm", "mean.dif.all")]), aes(x=StemWPsm, y=mean.dif.all)) + theme_bw(base_size=20) + 
+  theme(legend.position="none",
+        axis.title.x=element_blank(), axis.title.y=element_blank(),
+        axis.text.x=element_blank(), axis.text.y=element_blank(),
+        axis.ticks.x=element_blank(), axis.ticks.y=element_blank()) +
+  geom_point(alpha=0.3, colour="dark green") + 
+  stat_smooth(method="lm") + 
+  geom_text(data=raw.corr, aes(x=-7.2, y=ypos, label=StemWPest), size=7, vjust=1, parse=T, show.legend=F) +
+  ylab("Branch Position")
+
+
+
+
+
+
+
+
+# LDStatus plots
+########## MORE WORK HERE
+allregs$Season <- NA
+allregs$Season[month(allregs$timestamp) <= 9] <- "Monsoon"
+allregs$Season[month(allregs$timestamp) >= 11] <- "Winter"
+allregs$Season <- as.factor(allregs$Season)
+
+raw.corr.LD <- data.frame(
+  LDStatus = c("D", "L"),
+  RHest = c(cor.test(allregs$RH[allregs$LDStatus=="D"], allregs$mean.dif.LD[allregs$LDStatus=="D"])$estimate,
+            cor.test(allregs$RH[allregs$LDStatus=="L"], allregs$mean.dif.LD[allregs$LDStatus=="L"])$estimate),
+  AirTest = c(cor.test(allregs$air.temp[allregs$LDStatus=="D"], allregs$mean.dif.LD[allregs$LDStatus=="D"])$estimate,
+              cor.test(allregs$air.temp[allregs$LDStatus=="L"], allregs$mean.dif.LD[allregs$LDStatus=="L"])$estimate),
+  StemWPest = c(cor.test(allregs$StemWPsm[allregs$LDStatus=="D"], allregs$mean.dif.LD[allregs$LDStatus=="D"])$estimate,
+                cor.test(allregs$StemWPsm[allregs$LDStatus=="L"], allregs$mean.dif.LD[allregs$LDStatus=="L"])$estimate),
+  StemWPmonsest = c(cor.test(allregs$StemWPsm[allregs$LDStatus=="D" & allregs$Season=="Monsoon"], allregs$mean.dif.LD[allregs$LDStatus=="D" & allregs$Season=="Monsoon"])$estimate,
+                cor.test(allregs$StemWPsm[allregs$LDStatus=="L" & allregs$Season=="Monsoon"], allregs$mean.dif.LD[allregs$LDStatus=="L" & allregs$Season=="Monsoon"])$estimate),
+  VPDest = c(cor.test(allregs$VPD[allregs$LDStatus=="D"], allregs$mean.dif.LD[allregs$LDStatus=="D"])$estimate,
+                cor.test(allregs$VPD[allregs$LDStatus=="L"], allregs$mean.dif.LD[allregs$LDStatus=="L"])$estimate),
+  Shadeest = c(cor.test(allregs$SoilT.dif[allregs$LDStatus=="D" & allregs$Depth=="02.5cm" & month(allregs$timestamp) <= 9], allregs$mean.dif.LD[allregs$LDStatus=="D" & allregs$Depth=="02.5cm" & month(allregs$timestamp) <= 9])$estimate,
+               cor.test(allregs$SoilT.dif[allregs$LDStatus=="L" & allregs$Depth=="02.5cm" & month(allregs$timestamp) <= 9], allregs$mean.dif.LD[allregs$LDStatus=="L" & allregs$Depth=="02.5cm" & month(allregs$timestamp) <= 9])$estimate))
+
+
+VPDest = c(cor.test(allregs$VPD[allregs$LDStatus=="D"], allregs$mean.dif.LD[allregs$LDStatus=="D"])$estimate,
+           cor.test(allregs$VPD[allregs$LDStatus=="L"], allregs$mean.dif.LD[allregs$LDStatus=="L"])$estimate),
+fitD <- lm(mean.dif.LD ~ poly(RH,2), data=allregs[allregs$LDStatus=="D",])
+fitL <- lm(mean.dif.LD ~ poly(RH,2), data=allregs[allregs$LDStatus=="L",])
+cor(allregs$mean.dif.all, allregs$RH)
+summary(fitD)
+summary(fitL)
+fitD
+
+raw.corr.LD$RHest <- paste("R^2 == ", round(raw.corr.LD$RHest, digits=2))
+raw.corr.LD$AirTest <- paste("R^2 == ", round(raw.corr.LD$AirTest, digits=2))
+raw.corr.LD$StemWPest <- paste("R^2 == ", round(raw.corr.LD$StemWPest, digits=2))
+raw.corr.LD$Shadeest <- paste("R^2 == ", round(raw.corr.LD$Shadeest, digits=2))
+raw.corr.LD$VPDest <- paste("R^2 == ", round(raw.corr.LD$VPDest, digits=2))
+raw.corr.LD$ypos <- c(0.95, 0.8)
+
+
+
+WigRHLD.cor.plot <- ggplot(unique(allregs[,c("timestamp", "RH", "mean.dif.LD", "LDStatus")]), aes(x=RH, y=mean.dif.LD, group=LDStatus, colour=LDStatus)) + theme_bw(base_size=24) + 
+  geom_point(alpha=0.4) + 
+  stat_smooth(method="lm", formula=y~poly(x,2), size=1.3, se=F) + 
+  xlab("Relative Humidity (%)") + ylab("Branch Position") + 
+  geom_text(data=raw.corr.LD, aes(x=25, y=ypos, label=RHest), size=7, vjust=1, parse=T, show.legend=F) +
+  labs(colour='Live/Dead') + scale_color_manual(labels = c("Dead", "Live"), values=c("#a65628", "#4daf4a")) +
+  theme(legend.key.size = unit(.9, units="lines"),
+        legend.position = c(0.8,0.15))
+
+
+AirTLD.cor.plot <- ggplot(unique(allregs[,c("timestamp", "air.temp", "mean.dif.LD", "LDStatus")]), aes(x=air.temp, y=mean.dif.LD, group=LDStatus, colour=LDStatus)) + theme_bw(base_size=24) + 
+  geom_point(alpha=0.4) + 
+  stat_smooth(method="lm", formula=y~poly(x,2), size=1.3, se=F) + 
+  xlab(expression("Air Temperature " ( degree*C))) + ylab("Branch Position") + 
+  geom_text(data=raw.corr.LD, aes(x=28, y=ypos, label=AirTest), size=7, vjust=1, parse=T, show.legend=F) +
+  labs(colour='Live/Dead') + scale_color_manual(labels = c("Dead", "Live"), values=c("#a65628", "#4daf4a")) +
+  theme(legend.position = "none", axis.title.y=element_blank())
+
+WigVPDLD.cor.plot <- ggplot(unique(allregs[,c("timestamp", "VPD", "mean.dif.LD", "LDStatus")]), aes(x=VPD, y=mean.dif.LD, group=LDStatus, colour=LDStatus)) + theme_bw(base_size=24) + 
+  geom_point(alpha=0.4) + 
+  stat_smooth(method="lm", formula=y~poly(x,2), size=1.3, se=F) + 
+  xlab("Vapour Pressure Deficit (kPa)") + ylab("Branch Position") + 
+  geom_text(data=raw.corr.LD, aes(x=4, y=ypos, label=VPDest), size=7, vjust=1, parse=T, show.legend=F) +
+  labs(colour='Live/Dead') + scale_color_manual(labels = c("Dead", "Live"), values=c("#a65628", "#4daf4a")) +
+  theme(legend.position = "none", 
+        axis.title.y=element_blank())
+
+
+WigStemWPLD.cor.plot <- ggplot(unique(allregs[,c("timestamp", "Season", "StemWPsm", "LDStatus", "mean.dif.LD")]), aes(x=StemWPsm, y=mean.dif.LD, group=LDStatus, colour=LDStatus)) + theme_bw(base_size=24) + 
+  geom_point(alpha=0.4) + 
+#  geom_point(data=allregs[allregs$Season=="Monsoon",], alpha=0.4) + 
+  stat_smooth(method="lm", size=1.3, se=F) + 
+  xlab("Stem Water Potential (MPa)") + ylab("Branch Position") +
+  geom_text(data=raw.corr.LD, aes(x=-7, y=ypos, label=StemWPest), size=7, vjust=1, parse=T, show.legend=F) +
+  labs(colour='Live/Dead') + scale_color_manual(labels = c("Dead", "Live"), values=c("#a65628", "#4daf4a")) +
+  theme(legend.position = "none", 
+        axis.title.y=element_blank())
+
+
+
+
+# Print all correlation plots
+
+#cor.plots.toprow <- plot_grid(WigRH.cor.plot, WigAirT.cor.plot, WigVPD.cor.plot, WigStemWP.cor.plot, align='h',ncol=4, rel_widths = c(1.2,1,1,1))
+cor.plots.bottomrow <- plot_grid(WigRHLD.cor.plot, AirTLD.cor.plot, WigVPDLD.cor.plot, WigStemWPLD.cor.plot, align='h', ncol=4, rel_widths = c(1.05,1,1,1))
+#cor.plots <- plot_grid(cor.plots.toprow, cor.plots.bottomrow, align='v', nrow=2, rel_heights = c(1,1.3))
+
+save_plot("/Users/alesia/Desktop/ZombiePlots/LDcorrplots.png", cor.plots.bottomrow, base_width = 27, base_height = 5.75)
+
+
+
+
+
+
+
+
+
+
+# Branch shading
+SoilTdif.plot <- ggplot(SoilTsub[SoilTsub$Depth=="02.5cm",], aes(x=timestamp, y=SoilT.dif, group=Depth, colour=SoilT.dif)) + 
+  geom_point(alpha=0.3, shape=1) +  
+  geom_hline(aes(yintercept=0)) +
+  stat_smooth(method="lm") +
+  theme_bw(base_size=20) + 
+  theme(legend.position="none") +
+  scale_colour_gradient(limits=c(-11,11),high="red",low="blue") +
+  xlab("Time") + ylab(expression("Soil Shading " ( degree*C))) +
+  xlim(start.date, end.date)
+print(SoilTdif.plot)
+ggsave(file="/Users/alesia/Desktop/ZombiePlots/SoilTdif_plot.png", width=4, height=4, units="in", dpi=300)
+
+ShadeLD.plot <- ggplot(unique(allregs[allregs$Depth=="02.5cm",c("timestamp", "SoilT.dif", "LDStatus", "mean.dif.LD", "Season")]), aes(x=SoilT.dif, y=mean.dif.LD, group=LDStatus, colour=LDStatus)) + theme_bw(base_size=20) +
+  geom_point(alpha=0.3) + 
+  stat_smooth(method="lm") +
+  geom_text(data=raw.corr.LD, aes(x=-7, y=ypos, label=Shadeest), size=6, vjust=1, parse=T, show.legend=F) +
+  xlab(expression("Soil Shading " ( degree*C))) + ylab("Branch Position") +
+  labs(colour='Live/Dead') + scale_color_manual(labels = c("Dead", "Live"), values=c("#a65628", "#4daf4a")) +
+  theme(legend.key.size = unit(.8, units="lines"),
+        legend.position = c(0.8,0.15))
+
+print(ShadeLD.plot)
+ggsave(file="/Users/alesia/Desktop/ZombiePlots/ShadeWiggleLD_plot.png", width=4, height=4, units="in", dpi=300)
+
+
+
+
